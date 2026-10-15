@@ -1,0 +1,22 @@
+provider:
+  name: aws
+
+policy: sync
+registry: txt
+txtPrefix: extdns-
+interval: 1m
+
+sources:
+  - ingress
+  - service
+
+serviceAccount:
+  create: true
+  name: external-dns
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    memory: 128Mi

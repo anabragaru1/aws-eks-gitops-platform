@@ -1,0 +1,12 @@
+replicaCount: 1
+logLevel: debug
+
+autoscaling:
+  minReplicas: 1
+  maxReplicas: 3
+
+podDisruptionBudget:
+  enabled: false
+
+image:
+  tag: 0.0.0

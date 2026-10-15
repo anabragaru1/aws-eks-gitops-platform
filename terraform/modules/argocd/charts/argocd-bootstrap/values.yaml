@@ -1,0 +1,7 @@
+repoURL: https://github.com/anabragaru1/aws-eks-gitops-platform.git
+targetRevision: main
+rootPath: kubernetes/argocd/root
+namespace: argocd
+
+# Passed straight through to the root chart as valuesObject.
+values: {}

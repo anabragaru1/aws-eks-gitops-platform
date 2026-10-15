@@ -1,0 +1,70 @@
+name: Kubernetes validate
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "kubernetes/**"
+      - "terraform/modules/argocd/charts/**"
+      - "scripts/**"
+      - ".github/workflows/k8s-validate.yml"
+  push:
+    branches: [main]
+    paths:
+      - "kubernetes/**"
+      - "terraform/modules/argocd/charts/**"
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Lint and schema check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          version: v3.22.0
+
+      - name: Install kubeconform
+        run: |
+          curl -sSL https://github.com/yannh/kubeconform/releases/download/v0.8.0/kubeconform-linux-amd64.tar.gz | tar xz
+          sudo install kubeconform /usr/local/bin/kubeconform
+
+      - name: Helm lint
+        run: |
+          helm lint kubernetes/argocd/root
+          helm lint kubernetes/platform/external-secrets/stores
+          helm lint kubernetes/platform/karpenter/nodepools -f kubernetes/platform/karpenter/nodepools/values-dev.yaml
+          helm lint kubernetes/platform/karpenter/nodepools -f kubernetes/platform/karpenter/nodepools/values-prod.yaml
+          helm lint kubernetes/apps/api -f kubernetes/apps/api/values-dev.yaml
+          helm lint kubernetes/apps/api -f kubernetes/apps/api/values-prod.yaml
+          helm lint terraform/modules/argocd/charts/argocd-bootstrap
+
+      - name: Render and validate manifests
+        run: scripts/validate-manifests.sh
+
+  argocd-smoke:
+    name: Argo CD smoke test on kind
+    needs: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          version: v3.22.0
+
+      - uses: helm/kind-action@1544676c07bb3570fcb70166beaa07c4528fd4aa # v1.15.1
+        with:
+          cluster_name: smoke
+          node_image: kindest/node:v1.34.11
+
+      - name: Install Argo CD and the root application, then wait for every child app to render
+        env:
+          REPO_URL: ${{ github.server_url }}/${{ github.repository }}.git
+          REPO_TOKEN: ${{ github.token }}
+          TARGET_REVISION: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: scripts/argocd-smoke.sh

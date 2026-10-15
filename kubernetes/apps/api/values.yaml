@@ -1,0 +1,66 @@
+environment: dev
+
+image:
+  repository: 123456789012.dkr.ecr.eu-west-1.amazonaws.com/gitops-platform-api
+  tag: 0.0.0
+  pullPolicy: IfNotPresent
+
+replicaCount: 2
+
+serviceAccount:
+  name: api
+  roleArn: ""
+
+service:
+  port: 80
+  targetPort: 8080
+
+ingress:
+  enabled: true
+  className: alb
+  host: api.dev.example.com
+  certificateArn: ""
+  group: gitops-platform-dev-public
+  healthcheckPath: /healthz
+
+cors:
+  allowedOrigin: https://app.dev.example.com
+
+database:
+  host: localhost
+  port: "5432"
+  name: app
+  sslMode: require
+  secretArn: ""
+  secretStore: aws-secrets-manager
+  refreshInterval: 1h
+
+# Application capacity comes from Karpenter; the managed node group only runs platform add-ons.
+nodeSelector:
+  karpenter.sh/nodepool: apps
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    memory: 256Mi
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 6
+  targetCPUUtilizationPercentage: 70
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+migrations:
+  enabled: true
+  backoffLimit: 3
+
+networkPolicy:
+  enabled: true
+
+logLevel: info

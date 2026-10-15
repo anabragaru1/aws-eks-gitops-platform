@@ -1,0 +1,118 @@
+name: Frontend build and deploy
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "apps/frontend/**"
+      - ".github/workflows/frontend-deploy.yml"
+  push:
+    branches: [main]
+    paths:
+      - "apps/frontend/**"
+      - ".github/workflows/frontend-deploy.yml"
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Environment to deploy
+        required: true
+        type: choice
+        options: [dev, prod]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test and lint
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/frontend
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/frontend/package-lock.json
+
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+
+  deploy:
+    name: Deploy ${{ matrix.environment }}
+    needs: test
+    if: github.event_name != 'pull_request' && vars.AWS_ACCOUNT_ID != ''
+    runs-on: ubuntu-latest
+    strategy:
+      max-parallel: 1
+      matrix:
+        environment: ${{ github.event_name == 'workflow_dispatch' && fromJSON(format('["{0}"]', inputs.environment)) || fromJSON('["dev","prod"]') }}
+    environment: ${{ matrix.environment }}
+    concurrency:
+      group: frontend-deploy-${{ matrix.environment }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      id-token: write
+    defaults:
+      run:
+        working-directory: apps/frontend
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/frontend/package-lock.json
+
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          aws-region: ${{ vars.AWS_REGION }}
+          role-to-assume: arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:role/gitops-platform-gha-app-deploy
+          role-session-name: gha-frontend-${{ matrix.environment }}
+
+      - name: Read platform parameters
+        id: params
+        env:
+          ENVIRONMENT: ${{ matrix.environment }}
+        run: |
+          get() { aws ssm get-parameter --name "/gitops-platform/$ENVIRONMENT/$1" --query Parameter.Value --output text; }
+          {
+            echo "api_url=$(get api/url)"
+            echo "bucket=$(get frontend/bucket)"
+            echo "distribution_id=$(get frontend/distribution_id)"
+            echo "url=$(get frontend/url)"
+          } >> "$GITHUB_OUTPUT"
+
+      - run: npm ci
+
+      - name: Build
+        env:
+          VITE_API_URL: ${{ steps.params.outputs.api_url }}
+        run: npm run build
+
+      # Hashed assets are immutable; index.html must always be revalidated.
+      - name: Upload to S3
+        env:
+          BUCKET: ${{ steps.params.outputs.bucket }}
+        run: |
+          aws s3 sync dist/assets "s3://$BUCKET/assets" --delete \
+            --cache-control "public, max-age=31536000, immutable"
+          aws s3 sync dist "s3://$BUCKET" --exclude "assets/*" --delete \
+            --cache-control "no-cache"
+
+      - name: Invalidate CloudFront
+        env:
+          DISTRIBUTION_ID: ${{ steps.params.outputs.distribution_id }}
+        run: |
+          id=$(aws cloudfront create-invalidation --distribution-id "$DISTRIBUTION_ID" --paths "/*" --query Invalidation.Id --output text)
+          aws cloudfront wait invalidation-completed --distribution-id "$DISTRIBUTION_ID" --id "$id"
+
+      - name: Summary
+        run: echo "Frontend deployed to ${{ steps.params.outputs.url }} (${{ matrix.environment }})" >> "$GITHUB_STEP_SUMMARY"

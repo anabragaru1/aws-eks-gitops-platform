@@ -1,0 +1,38 @@
+apiVersion: karpenter.sh/v1
+kind: NodePool
+metadata:
+  name: {{ .Values.pool.name }}
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  template:
+    spec:
+      nodeClassRef:
+        group: karpenter.k8s.aws
+        kind: EC2NodeClass
+        name: default
+      expireAfter: {{ .Values.pool.expireAfter }}
+      requirements:
+        - key: kubernetes.io/os
+          operator: In
+          values: ["linux"]
+        - key: kubernetes.io/arch
+          operator: In
+          values: {{ toJson .Values.pool.architectures }}
+        - key: karpenter.sh/capacity-type
+          operator: In
+          values: {{ toJson .Values.pool.capacityTypes }}
+        - key: karpenter.k8s.aws/instance-category
+          operator: In
+          values: {{ toJson .Values.pool.instanceCategories }}
+        - key: karpenter.k8s.aws/instance-generation
+          operator: Gt
+          values: [{{ .Values.pool.minGeneration | quote }}]
+  disruption:
+    consolidationPolicy: WhenEmptyOrUnderutilized
+    consolidateAfter: {{ .Values.pool.consolidateAfter }}
+    budgets:
+      - nodes: 10%
+  limits:
+    cpu: {{ .Values.pool.limits.cpu | quote }}
+    memory: {{ .Values.pool.limits.memory }}

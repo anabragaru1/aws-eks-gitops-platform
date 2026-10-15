@@ -1,0 +1,62 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: karpenter
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-4"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: platform
+  sources:
+    - repoURL: {{ .Values.charts.karpenter.repoURL }}
+      chart: karpenter
+      targetRevision: {{ .Values.charts.karpenter.version | quote }}
+      helm:
+        releaseName: karpenter
+        valueFiles:
+          - $values/kubernetes/platform/karpenter/values.yaml
+        valuesObject:
+          settings:
+            clusterName: {{ .Values.aws.clusterName }}
+            interruptionQueue: {{ .Values.karpenter.interruptionQueue }}
+          serviceAccount:
+            annotations:
+              eks.amazonaws.com/role-arn: {{ .Values.roles.karpenter }}
+    - repoURL: {{ .Values.source.repoURL }}
+      targetRevision: {{ .Values.source.targetRevision }}
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: karpenter
+  {{- include "root.syncPolicy" . | nindent 2 }}
+---
+# NodePool and EC2NodeClass go in a second app so the CRDs above exist before they are applied.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: karpenter-nodepools
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: platform
+  source:
+    repoURL: {{ .Values.source.repoURL }}
+    targetRevision: {{ .Values.source.targetRevision }}
+    path: kubernetes/platform/karpenter/nodepools
+    helm:
+      valueFiles:
+        - values.yaml
+        - values-{{ .Values.environment }}.yaml
+      valuesObject:
+        environment: {{ .Values.environment }}
+        clusterName: {{ .Values.aws.clusterName }}
+        nodeRoleName: {{ .Values.karpenter.nodeRoleName }}
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: karpenter
+  {{- include "root.syncPolicy" . | nindent 2 }}

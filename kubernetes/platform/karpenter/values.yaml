@@ -1,0 +1,18 @@
+replicas: 2
+
+serviceAccount:
+  create: true
+  name: karpenter
+
+# Runs on the managed node group; the chart's default affinity keeps it off Karpenter nodes.
+controller:
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      memory: 512Mi
+
+settings:
+  featureGates:
+    spotToSpotConsolidation: true

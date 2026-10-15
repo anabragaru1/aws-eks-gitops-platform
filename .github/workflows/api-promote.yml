@@ -1,0 +1,54 @@
+name: API promote to prod
+
+# Promotes an image that already runs in dev. The change lands as a pull request so
+# the prod rollout is reviewed in Git, which is where Argo CD reads it from.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Image tag to promote (git SHA); empty promotes the current dev tag
+        required: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  promote:
+    name: Open promotion pull request
+    runs-on: ubuntu-latest
+    environment: prod
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Resolve tag
+        id: tag
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          tag="${INPUT_TAG:-$(yq '.image.tag' kubernetes/apps/api/values-dev.yaml)}"
+          current=$(yq '.image.tag' kubernetes/apps/api/values-prod.yaml)
+          if [ "$tag" = "$current" ]; then
+            echo "prod already runs $tag" && exit 1
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Update prod image tag
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: yq -i '.image.tag = strenv(TAG)' kubernetes/apps/api/values-prod.yaml
+
+      - uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
+        with:
+          branch: promote/api-${{ steps.tag.outputs.tag }}
+          delete-branch: true
+          commit-message: "deploy(api): prod -> ${{ steps.tag.outputs.tag }}"
+          title: "Promote api ${{ steps.tag.outputs.tag }} to prod"
+          body: |
+            Promotes the API image already running in dev to prod.
+
+            - tag: `${{ steps.tag.outputs.tag }}`
+            - triggered by: @${{ github.actor }}
+
+            Merging this pull request is the prod deployment; Argo CD syncs it automatically.
+          labels: deployment,prod

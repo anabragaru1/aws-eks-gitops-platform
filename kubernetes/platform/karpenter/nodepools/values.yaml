@@ -1,0 +1,19 @@
+environment: dev
+clusterName: gitops-platform-dev
+nodeRoleName: gitops-platform-dev-karpenter-node
+
+# Pin to a dated alias (al2023@v2026...) once a version has been validated.
+amiAlias: al2023@latest
+volumeSize: 50Gi
+
+pool:
+  name: apps
+  architectures: [amd64]
+  capacityTypes: [on-demand]
+  instanceCategories: [c, m, r]
+  minGeneration: "4"
+  limits:
+    cpu: "32"
+    memory: 64Gi
+  consolidateAfter: 1m
+  expireAfter: 720h

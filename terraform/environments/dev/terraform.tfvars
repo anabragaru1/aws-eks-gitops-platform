@@ -1,0 +1,5 @@
+region           = "eu-west-1"
+hosted_zone_name = "example.com"
+base_domain      = "dev.example.com"
+alert_email      = "platform-alerts@example.com"
+repo_url         = "https://github.com/anabragaru1/aws-eks-gitops-platform.git"

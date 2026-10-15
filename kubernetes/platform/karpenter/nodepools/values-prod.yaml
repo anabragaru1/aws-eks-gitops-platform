@@ -1,0 +1,5 @@
+pool:
+  capacityTypes: [on-demand]
+  limits:
+    cpu: "100"
+    memory: 400Gi

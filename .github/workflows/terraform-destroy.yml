@@ -1,0 +1,64 @@
+name: Terraform destroy
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Environment to destroy
+        required: true
+        type: choice
+        options: [dev, prod]
+      confirm:
+        description: Type "destroy-<environment>" to confirm
+        required: true
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  destroy:
+    name: Destroy ${{ inputs.environment }}
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    if: inputs.confirm == format('destroy-{0}', inputs.environment)
+    concurrency:
+      group: terraform-${{ inputs.environment }}
+      cancel-in-progress: false
+    env:
+      TF_IN_AUTOMATION: "true"
+      TF_INPUT: "0"
+      TF_VAR_github_app_id: ${{ vars.ARGOCD_GITHUB_APP_ID }}
+      TF_VAR_github_app_installation_id: ${{ vars.ARGOCD_GITHUB_APP_INSTALLATION_ID }}
+      TF_VAR_github_app_private_key: ${{ secrets.ARGOCD_GITHUB_APP_PRIVATE_KEY }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: ./.github/actions/terraform-init
+        with:
+          environment: ${{ inputs.environment }}
+          role: apply
+          aws-account-id: ${{ vars.AWS_ACCOUNT_ID }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      # Workloads and Karpenter nodes go first, while their controllers are still running.
+      - name: Remove application workloads and Karpenter node pools
+        continue-on-error: true
+        run: |
+          cluster=$(aws ssm get-parameter --name /gitops-platform/${{ inputs.environment }}/eks/cluster_name --query Parameter.Value --output text)
+          aws eks update-kubeconfig --name "$cluster"
+          kubectl -n argocd patch application root --type merge -p '{"spec":{"syncPolicy":null}}'
+          kubectl -n argocd delete application api karpenter-nodepools --ignore-not-found --wait --timeout=15m
+
+      # Argo CD owns the ALBs and DNS records; removing it first lets the controllers clean up.
+      - name: Remove Argo CD and its workloads
+        working-directory: terraform/environments/${{ inputs.environment }}
+        run: |
+          terraform destroy -input=false -no-color -auto-approve \
+            -target=module.platform.module.argocd.helm_release.bootstrap \
+            -target=module.platform.module.argocd.helm_release.argocd
+          sleep 120
+
+      - name: Destroy everything else
+        working-directory: terraform/environments/${{ inputs.environment }}
+        run: terraform destroy -input=false -no-color -auto-approve

@@ -1,0 +1,53 @@
+# Infrastructure facts below are overridden by Terraform through the root Application.
+# The defaults only exist so the chart renders in CI and on a local kind cluster.
+source:
+  repoURL: https://github.com/anabragaru1/aws-eks-gitops-platform.git
+  targetRevision: main
+
+environment: dev
+
+aws:
+  region: eu-west-1
+  accountId: "123456789012"
+  vpcId: vpc-0123456789abcdef0
+  clusterName: gitops-platform-dev
+  hostedZoneId: Z0123456789ABCDEFGHIJ
+  domain: dev.example.com
+  ingressGroup: gitops-platform-dev-public
+
+roles:
+  albController: arn:aws:iam::123456789012:role/gitops-platform-dev-aws-load-balancer-controller
+  externalDns: arn:aws:iam::123456789012:role/gitops-platform-dev-external-dns
+  externalSecrets: arn:aws:iam::123456789012:role/gitops-platform-dev-external-secrets
+  karpenter: arn:aws:iam::123456789012:role/gitops-platform-dev-karpenter
+
+karpenter:
+  nodeRoleName: gitops-platform-dev-karpenter-node
+  interruptionQueue: gitops-platform-dev
+
+api:
+  host: api.dev.example.com
+  certificateArn: arn:aws:acm:eu-west-1:123456789012:certificate/00000000-0000-0000-0000-000000000000
+  frontendOrigin: https://app.dev.example.com
+  image:
+    repository: 123456789012.dkr.ecr.eu-west-1.amazonaws.com/gitops-platform-api
+  db:
+    host: gitops-platform-dev.abcdefghijkl.eu-west-1.rds.amazonaws.com
+    port: 5432
+    name: app
+    secretArn: arn:aws:secretsmanager:eu-west-1:123456789012:secret:rds!db-00000000-0000-0000-0000-000000000000
+
+# Pinned chart versions for the cluster add-ons.
+charts:
+  karpenter:
+    repoURL: public.ecr.aws/karpenter
+    version: 1.15.0
+  albController:
+    repoURL: https://aws.github.io/eks-charts
+    version: 3.6.0
+  externalDns:
+    repoURL: https://kubernetes-sigs.github.io/external-dns/
+    version: 1.23.0
+  externalSecrets:
+    repoURL: https://charts.external-secrets.io
+    version: 2.12.0

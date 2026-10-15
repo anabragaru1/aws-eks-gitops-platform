@@ -1,0 +1,44 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: platform
+  namespace: {{ .Values.namespace }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "-10"
+spec:
+  description: Cluster add-ons and the root application
+  sourceRepos:
+    - {{ .Values.repoURL }}
+    - https://aws.github.io/eks-charts
+    - https://kubernetes-sigs.github.io/external-dns/
+    - https://charts.external-secrets.io
+    - public.ecr.aws/karpenter
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: "*"
+  clusterResourceWhitelist:
+    - group: "*"
+      kind: "*"
+---
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: apps
+  namespace: {{ .Values.namespace }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "-10"
+spec:
+  description: Business applications, namespaced resources only
+  sourceRepos:
+    - {{ .Values.repoURL }}
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: api
+  clusterResourceWhitelist:
+    - group: ""
+      kind: Namespace
+  namespaceResourceBlacklist:
+    - group: ""
+      kind: ResourceQuota
+    - group: ""
+      kind: LimitRange

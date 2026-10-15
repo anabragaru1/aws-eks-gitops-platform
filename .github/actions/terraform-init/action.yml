@@ -1,0 +1,45 @@
+name: Terraform init
+description: Assume the CI role with OIDC and initialise the environment backend
+
+inputs:
+  environment:
+    description: Environment directory under terraform/environments
+    required: true
+  role:
+    description: IAM role name suffix, plan or apply
+    required: true
+  aws-account-id:
+    description: AWS account ID
+    required: true
+  aws-region:
+    description: AWS region
+    required: true
+  terraform-version:
+    description: Terraform version
+    required: false
+    default: "1.16.5"
+
+runs:
+  using: composite
+  steps:
+    - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+      with:
+        terraform_version: ${{ inputs.terraform-version }}
+        terraform_wrapper: false
+
+    - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+      with:
+        aws-region: ${{ inputs.aws-region }}
+        role-to-assume: arn:aws:iam::${{ inputs.aws-account-id }}:role/gitops-platform-gha-terraform-${{ inputs.role }}
+        role-session-name: gha-terraform-${{ inputs.role }}-${{ inputs.environment }}
+
+    - name: Terraform init
+      shell: bash
+      working-directory: terraform/environments/${{ inputs.environment }}
+      run: |
+        terraform init -input=false \
+          -backend-config="bucket=gitops-platform-tfstate-${{ inputs.aws-account-id }}-${{ inputs.aws-region }}" \
+          -backend-config="key=${{ inputs.environment }}/terraform.tfstate" \
+          -backend-config="region=${{ inputs.aws-region }}" \
+          -backend-config="use_lockfile=true" \
+          -backend-config="encrypt=true"

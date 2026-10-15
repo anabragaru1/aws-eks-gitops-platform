@@ -1,0 +1,90 @@
+name: Terraform apply
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "terraform/**"
+      - ".github/workflows/terraform-apply.yml"
+      - ".github/actions/terraform-init/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  TF_IN_AUTOMATION: "true"
+  TF_INPUT: "0"
+
+jobs:
+  dev:
+    name: Apply dev
+    if: vars.AWS_ACCOUNT_ID != ''
+    runs-on: ubuntu-latest
+    environment: dev
+    concurrency:
+      group: terraform-dev
+      cancel-in-progress: false
+    env:
+      TF_VAR_github_app_id: ${{ vars.ARGOCD_GITHUB_APP_ID }}
+      TF_VAR_github_app_installation_id: ${{ vars.ARGOCD_GITHUB_APP_INSTALLATION_ID }}
+      TF_VAR_github_app_private_key: ${{ secrets.ARGOCD_GITHUB_APP_PRIVATE_KEY }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: ./.github/actions/terraform-init
+        with:
+          environment: dev
+          role: apply
+          aws-account-id: ${{ vars.AWS_ACCOUNT_ID }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Plan
+        working-directory: terraform/environments/dev
+        run: terraform plan -input=false -no-color -out=tfplan
+
+      - name: Apply
+        working-directory: terraform/environments/dev
+        run: terraform apply -input=false -no-color tfplan
+
+      - name: Summary
+        working-directory: terraform/environments/dev
+        run: |
+          { echo "## dev outputs"; echo '```'; terraform output -no-color; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+
+  prod:
+    name: Apply prod
+    needs: dev
+    runs-on: ubuntu-latest
+    # The prod environment carries a required-reviewer rule, so this job waits for approval.
+    environment: prod
+    concurrency:
+      group: terraform-prod
+      cancel-in-progress: false
+    env:
+      TF_VAR_github_app_id: ${{ vars.ARGOCD_GITHUB_APP_ID }}
+      TF_VAR_github_app_installation_id: ${{ vars.ARGOCD_GITHUB_APP_INSTALLATION_ID }}
+      TF_VAR_github_app_private_key: ${{ secrets.ARGOCD_GITHUB_APP_PRIVATE_KEY }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: ./.github/actions/terraform-init
+        with:
+          environment: prod
+          role: apply
+          aws-account-id: ${{ vars.AWS_ACCOUNT_ID }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Plan
+        working-directory: terraform/environments/prod
+        run: terraform plan -input=false -no-color -out=tfplan
+
+      - name: Apply
+        working-directory: terraform/environments/prod
+        run: terraform apply -input=false -no-color tfplan
+
+      - name: Summary
+        working-directory: terraform/environments/prod
+        run: |
+          { echo "## prod outputs"; echo '```'; terraform output -no-color; echo '```'; } >> "$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,25 @@
+directory:
+  - terraform
+framework:
+  - terraform
+quiet: true
+compact: true
+skip-check:
+  # S3 access logging, replication and event notifications are not needed for state or static assets.
+  - CKV_AWS_18
+  - CKV_AWS_144
+  - CKV2_AWS_62
+  # The EKS public endpoint is required for GitHub-hosted runners, see ARCHITECTURE.md.
+  - CKV_AWS_38
+  - CKV_AWS_39
+  # CloudFront logging, WAF, origin failover and geo restriction are deliberate scope cuts, see ARCHITECTURE.md.
+  - CKV_AWS_68
+  - CKV_AWS_86
+  - CKV_AWS_310
+  - CKV_AWS_374
+  # No WAF is attached to CloudFront (CKV_AWS_68 above), so the Log4j managed rule does not apply.
+  - CKV2_AWS_47
+  # Public static assets: SSE-S3 is enough, KMS would add a request on every edge miss for no gain.
+  - CKV_AWS_145
+  # SSM parameters hold discovery values only (names, URLs, IDs), no secrets.
+  - CKV2_AWS_34

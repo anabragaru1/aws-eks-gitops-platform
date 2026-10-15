@@ -1,0 +1,43 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: aws-load-balancer-controller
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-3"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: platform
+  sources:
+    - repoURL: {{ .Values.charts.albController.repoURL }}
+      chart: aws-load-balancer-controller
+      targetRevision: {{ .Values.charts.albController.version | quote }}
+      helm:
+        releaseName: aws-load-balancer-controller
+        valueFiles:
+          - $values/kubernetes/platform/aws-load-balancer-controller/values.yaml
+        valuesObject:
+          clusterName: {{ .Values.aws.clusterName }}
+          region: {{ .Values.aws.region }}
+          vpcId: {{ .Values.aws.vpcId }}
+          serviceAccount:
+            annotations:
+              eks.amazonaws.com/role-arn: {{ .Values.roles.albController }}
+    - repoURL: {{ .Values.source.repoURL }}
+      targetRevision: {{ .Values.source.targetRevision }}
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kube-system
+  ignoreDifferences:
+    - group: admissionregistration.k8s.io
+      kind: MutatingWebhookConfiguration
+      jsonPointers:
+        - /webhooks/0/clientConfig/caBundle
+    - group: admissionregistration.k8s.io
+      kind: ValidatingWebhookConfiguration
+      jsonPointers:
+        - /webhooks/0/clientConfig/caBundle
+        - /webhooks/1/clientConfig/caBundle
+  {{- include "root.syncPolicy" . | nindent 2 }}

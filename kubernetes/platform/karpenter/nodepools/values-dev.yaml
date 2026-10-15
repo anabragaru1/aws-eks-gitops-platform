@@ -1,0 +1,5 @@
+pool:
+  capacityTypes: [spot, on-demand]
+  limits:
+    cpu: "16"
+    memory: 32Gi

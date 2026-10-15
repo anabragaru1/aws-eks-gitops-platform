@@ -1,0 +1,39 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: api
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: apps
+  source:
+    repoURL: {{ .Values.source.repoURL }}
+    targetRevision: {{ .Values.source.targetRevision }}
+    path: kubernetes/apps/api
+    helm:
+      releaseName: api
+      valueFiles:
+        - values.yaml
+        - values-{{ .Values.environment }}.yaml
+      valuesObject:
+        environment: {{ .Values.environment }}
+        image:
+          repository: {{ .Values.api.image.repository }}
+        ingress:
+          host: {{ .Values.api.host }}
+          certificateArn: {{ .Values.api.certificateArn }}
+          group: {{ .Values.aws.ingressGroup }}
+        cors:
+          allowedOrigin: {{ .Values.api.frontendOrigin }}
+        database:
+          host: {{ .Values.api.db.host }}
+          port: {{ .Values.api.db.port | quote }}
+          name: {{ .Values.api.db.name }}
+          secretArn: {{ .Values.api.db.secretArn }}
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: api
+  {{- include "root.syncPolicy" . | nindent 2 }}

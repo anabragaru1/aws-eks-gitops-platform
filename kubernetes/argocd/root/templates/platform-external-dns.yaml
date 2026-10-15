@@ -1,0 +1,38 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: external-dns
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: platform
+  sources:
+    - repoURL: {{ .Values.charts.externalDns.repoURL }}
+      chart: external-dns
+      targetRevision: {{ .Values.charts.externalDns.version | quote }}
+      helm:
+        releaseName: external-dns
+        valueFiles:
+          - $values/kubernetes/platform/external-dns/values.yaml
+        valuesObject:
+          domainFilters:
+            - {{ .Values.aws.domain }}
+          txtOwnerId: {{ .Values.aws.clusterName }}
+          extraArgs:
+            - --zone-id-filter={{ .Values.aws.hostedZoneId }}
+          env:
+            - name: AWS_DEFAULT_REGION
+              value: {{ .Values.aws.region }}
+          serviceAccount:
+            annotations:
+              eks.amazonaws.com/role-arn: {{ .Values.roles.externalDns }}
+    - repoURL: {{ .Values.source.repoURL }}
+      targetRevision: {{ .Values.source.targetRevision }}
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: external-dns
+  {{- include "root.syncPolicy" . | nindent 2 }}
